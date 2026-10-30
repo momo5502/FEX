@@ -180,9 +180,11 @@ inline void VirtualDontNeed(void* Ptr, size_t Size, bool Recommit = true) {
   // Darwin equivalent of Linux's MADV_DONTNEED on anonymous memory - this also keeps the large, sparsely
   // populated L2 page table from being fully committed by a plain memset); zero the rare sub-page
   // caller in place (__builtin_memset avoids pulling <string.h> into this widely-included header).
+  // The replacement goes through the mmap hook, so an embedder that maps this memory a second time
+  // elsewhere can see that its pages changed.
   const uintptr_t Addr = reinterpret_cast<uintptr_t>(Ptr);
   if ((Addr & (FEXCore::Utils::FEX_HOST_PAGE_SIZE - 1)) == 0 && (Size & (FEXCore::Utils::FEX_HOST_PAGE_SIZE - 1)) == 0) {
-    ::mmap(Ptr, Size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    FEXCore::Allocator::mmap(Ptr, Size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   } else {
     __builtin_memset(Ptr, 0, Size);
   }
