@@ -8,6 +8,8 @@
 #ifndef _WIN32
 #include <stdlib.h>
 #ifdef __APPLE__
+#include <TargetConditionals.h>
+#include <dlfcn.h>
 #include <malloc/malloc.h>
 #include <pthread.h>
 #else
@@ -152,12 +154,26 @@ inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Co
 // writable while `true`. Must bracket any code that writes into a MAP_JIT region - wrap the
 // coarse "compile one block" / "emit one stub" boundary, not individual instruction emits, since
 // toggling has real per-call overhead.
+inline void SetJITWriteProtect(bool Protect) {
+#if TARGET_OS_SIMULATOR
+  // The iOS SDK marks this unavailable, but the Simulator runs on the macOS kernel, which
+  // enforces per-thread W^X on MAP_JIT memory, and its libSystem exports the symbol.
+  using WriteProtectFn = void (*)(int);
+  static const auto WriteProtect = reinterpret_cast<WriteProtectFn>(::dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np"));
+  if (WriteProtect) {
+    WriteProtect(Protect);
+  }
+#elif !TARGET_OS_IPHONE
+  ::pthread_jit_write_protect_np(Protect);
+#endif
+}
+
 struct JITWriteScope {
   JITWriteScope() {
-    ::pthread_jit_write_protect_np(0);
+    SetJITWriteProtect(false);
   }
   ~JITWriteScope() {
-    ::pthread_jit_write_protect_np(1);
+    SetJITWriteProtect(true);
   }
   JITWriteScope(const JITWriteScope&) = delete;
   JITWriteScope& operator=(const JITWriteScope&) = delete;

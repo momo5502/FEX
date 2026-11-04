@@ -61,9 +61,9 @@ if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "Unsupported pointer size ${CMAKE_SIZEOF_VOID_P}."
     " FEX only supports 64-bit (8-byte pointer) systems."
     " If you believe this is in error, file an issue.")
-elseif (NOT (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Android"))
+elseif (NOT (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   message(FATAL_ERROR "Unsupported system type ${CMAKE_SYSTEM_NAME}."
-    " FEX only supports Linux, Android, Windows, and (as a sogen-local fork) Darwin."
+    " FEX only supports Linux, Android, Windows, and (as a sogen-local fork) Darwin and iOS."
     " If you believe this is in error, file an issue.")
 endif()
 

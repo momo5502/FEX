@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <memory_resource>
 namespace fex_pmr = std::pmr;
-#include <sys/user.h>
 
 #include <mutex>
 
