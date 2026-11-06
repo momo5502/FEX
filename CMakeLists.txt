@@ -221,7 +221,7 @@ check_cxx_source_compiles(
   HAS_CLANG_PRESERVE_ALL)
 unset(CMAKE_REQUIRED_FLAGS)
 if (HAS_CLANG_PRESERVE_ALL)
-  if (MINGW)
+  if (MINGW OR APPLE)
     message(STATUS "Ignoring broken clang::preserve_all support")
     set(HAS_CLANG_PRESERVE_ALL FALSE)
   else()
