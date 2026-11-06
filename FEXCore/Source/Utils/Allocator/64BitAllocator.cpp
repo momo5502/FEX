@@ -26,7 +26,6 @@
 #include <new>
 #include <sys/mman.h>
 #include <sys/utsname.h>
-#include <sys/user.h>
 #include <type_traits>
 #include <utility>
 
