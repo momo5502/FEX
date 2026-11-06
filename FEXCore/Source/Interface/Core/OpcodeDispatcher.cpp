@@ -79,6 +79,11 @@ void OpDispatchBuilder::SyscallOp(OpcodeArgs, bool IsSyscallInst) {
     Arguments[i] = LoadGPRRegister(GPRIndexes->at(i));
   }
 
+  if (OSABI == FEXCore::HLE::SyscallOSABI::OS_GENERIC) {
+    // sogen-specific: tells guest syscalls apart from the instruction callback (see HLE::InstructionCallbackID).
+    Arguments[0] = Constant(0);
+  }
+
   if (IsSyscallInst) {
     // If this is the `Syscall` instruction rather than `int 0x80` then we need to do some additional work.
     // RCX = RIP after this instruction
@@ -1441,7 +1446,28 @@ void OpDispatchBuilder::MOVOffsetOp(OpcodeArgs) {
   }
 }
 
+Ref OpDispatchBuilder::InstructionCallback(int64_t RIPOffset) {
+  CalculateDeferredFlags();
+  auto RIP = _EntrypointOffset(GetGPROpSize(), RIPOffset);
+  _StoreContextGPR(OpSize::i64Bit, RIP, offsetof(FEXCore::Core::CPUState, rip));
+  FlushRegisterCache();
+  return _Syscall(Constant(FEXCore::HLE::InstructionCallbackID), InvalidNode, InvalidNode, InvalidNode, InvalidNode, InvalidNode, InvalidNode);
+}
+
+void OpDispatchBuilder::TrapForEmbedder(OpcodeArgs) {
+  BreakOp(Op, FEXCore::IR::BreakDefinition {
+                .ErrorRegister = 0,
+                .Signal = Core::FAULT_SIGILL,
+                .TrapNumber = X86State::X86_TRAPNO_UD,
+                .si_code = 2,
+              });
+}
+
 void OpDispatchBuilder::CPUIDOp(OpcodeArgs) {
+  if (CTX->Config.TrapTimestampAndCpuid) {
+    TrapForEmbedder(Op);
+    return;
+  }
   const auto GPRSize = GetGPROpSize();
 
   Ref Src = LoadSourceGPR_WithOpSize(Op, Op->Src[0], GPRSize, Op->Flags);
@@ -3193,6 +3219,10 @@ OpDispatchBuilder::CycleCounterPair OpDispatchBuilder::CycleCounter(bool SelfSyn
 }
 
 void OpDispatchBuilder::RDTSCOp(OpcodeArgs) {
+  if (CTX->Config.TrapTimestampAndCpuid) {
+    TrapForEmbedder(Op);
+    return;
+  }
   auto Counter = CycleCounter(false);
   StoreGPRRegister(X86State::REG_RAX, Counter.CounterLow);
   StoreGPRRegister(X86State::REG_RDX, Counter.CounterHigh);
@@ -3813,18 +3843,48 @@ void OpDispatchBuilder::NEGOp(OpcodeArgs) {
   }
 }
 
+// sogen-specific: AArch64 division by zero returns 0, so #DE is raised explicitly, at the instruction like hardware.
+// Splits the block, so the caller loads its operands afterwards: no IR value lives across the split.
+void OpDispatchBuilder::RaiseDivideErrorIfZero(OpcodeArgs, IR::OpSize Size) {
+  Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = true});
+  if (Size < OpSize::i64Bit) {
+    Divisor = _Bfe(OpSize::i64Bit, IR::OpSizeAsBits(Size), 0, Divisor);
+  }
+
+  auto NonZero = CondJump(Divisor, CondClass::NEQ);
+  auto ZeroBlock = CreateNewCodeBlockAfter(GetCurrentBlock());
+  SetFalseJumpTarget(NonZero, ZeroBlock);
+  SetCurrentCodeBlock(ZeroBlock);
+  StartNewBlock();
+
+  _StoreContextGPR(OpSize::i64Bit, GetRelocatedPC(Op, -Op->InstSize), offsetof(FEXCore::Core::CPUState, rip));
+  Break(FEXCore::IR::BreakDefinition {
+    .ErrorRegister = 0,
+    .Signal = Core::FAULT_SIGSEGV,
+    .TrapNumber = X86State::X86_TRAPNO_DE,
+    .si_code = 0x80,
+  });
+
+  auto Continue = CreateNewCodeBlockAfter(ZeroBlock);
+  SetTrueJumpTarget(NonZero, Continue);
+  SetCurrentCodeBlock(Continue);
+  StartNewBlock();
+}
+
 void OpDispatchBuilder::DIVOp(OpcodeArgs) {
   const auto GPRSize = GetGPROpSize();
   auto Size = OpSizeFromSrc(Op);
-
-  // This loads the divisor. 32-bit/64-bit paths mask inside the JIT, 8/16 do not.
-  Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = Size >= OpSize::i32Bit});
 
   if (Size == OpSize::i64Bit && !Is64BitMode) {
     LogMan::Msg::EFmt("Doesn't exist in 32bit mode");
     DecodeFailure = true;
     return;
   }
+
+  RaiseDivideErrorIfZero(Op, Size);
+
+  // This loads the divisor. 32-bit/64-bit paths mask inside the JIT, 8/16 do not.
+  Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = Size >= OpSize::i32Bit});
 
   Ref Quotient = _AllocateGPR(true);
   Ref Remainder = _AllocateGPR(true);
@@ -3855,9 +3915,6 @@ void OpDispatchBuilder::DIVOp(OpcodeArgs) {
 }
 
 void OpDispatchBuilder::IDIVOp(OpcodeArgs) {
-  // This loads the divisor
-  Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags);
-
   const auto GPRSize = GetGPROpSize();
   auto Size = OpSizeFromSrc(Op);
 
@@ -3866,6 +3923,11 @@ void OpDispatchBuilder::IDIVOp(OpcodeArgs) {
     DecodeFailure = true;
     return;
   }
+
+  RaiseDivideErrorIfZero(Op, Size);
+
+  // This loads the divisor
+  Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags);
 
   Ref Quotient = _AllocateGPR(true);
   Ref Remainder = _AllocateGPR(true);
@@ -5140,6 +5202,10 @@ void OpDispatchBuilder::Prefetch(OpcodeArgs, bool ForStore, bool Stream, uint8_t
 }
 
 void OpDispatchBuilder::RDTSCPOp(OpcodeArgs) {
+  if (CTX->Config.TrapTimestampAndCpuid) {
+    TrapForEmbedder(Op);
+    return;
+  }
   // RDTSCP is slightly different than RDTSC
   // IA32_TSC_AUX is returned in RCX
   // All previous loads are globally visible

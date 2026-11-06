@@ -412,6 +412,9 @@ public:
   void MOVOffsetOp(OpcodeArgs);
   void CMOVOp(OpcodeArgs);
   void CPUIDOp(OpcodeArgs);
+  void TrapForEmbedder(OpcodeArgs);
+  void RaiseDivideErrorIfZero(OpcodeArgs, IR::OpSize Size);
+  Ref InstructionCallback(int64_t RIPOffset);
   void XGetBVOp(OpcodeArgs);
   uint32_t GetConstantShift(X86Tables::DecodedOp Op, bool Is1Bit);
   void SHLOp(OpcodeArgs);
@@ -1262,7 +1265,7 @@ public:
   // sub-4GB dereferences rebased. Every 32-bit-mode address is inherently below 4GB, so the rebase is
   // unconditional there; 64-bit-mode addresses need the runtime range check (GuestRebaseInfo::Conditional).
   IR::GuestRebaseInfo GuestMemoryRebase() const {
-    if (!CTX->Config.NeedsWow64GuestRebase) {
+    if (!CTX->Config.NeedsWow64GuestRebase || !CTX->Config.Wow64GuestRebaseInGeneratedCode) {
       return {};
     }
     return {.Rebase = CTX->Config.Wow64GuestRebaseValue, .Conditional = Is64BitMode};

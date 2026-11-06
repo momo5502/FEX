@@ -192,6 +192,29 @@ public:
   FEX_DEFAULT_VISIBILITY virtual void SetWow64GuestRebaseValue(uint64_t RebaseValue) = 0;
 
   /**
+   * @brief sogen-specific: whether generated code adds the rebase to sub-4GB guest addresses itself
+   * (the default). An embedder that runs generated code inside a VM maps the guest's low 4GB at its
+   * guest addresses there, so only FEX's own host-side reads of guest code (instruction fetch, SMC
+   * checks) are rebased.
+   */
+  FEX_DEFAULT_VISIBILITY virtual void SetWow64GuestRebaseInGeneratedCode(bool InGeneratedCode) = 0;
+
+  /**
+   * @brief sogen-specific: makes RDTSC, RDTSCP and CPUID trap like UD2, with RIP at the instruction, so the
+   * embedder can run its own handler for them. Only code compiled afterwards is affected.
+   */
+  FEX_DEFAULT_VISIBILITY virtual void SetTrapTimestampAndCpuid(bool Trap) = 0;
+
+  /**
+   * @brief sogen-specific: calls the syscall handler with HLE::InstructionCallbackID before every guest instruction in
+   * [Start, Start + Length), so the embedder can hook execution, count instructions and stop exactly between two.
+   * Ranges are counted, so each add needs a matching remove. Only code compiled afterwards is affected; the embedder
+   * invalidates the range itself.
+   */
+  FEX_DEFAULT_VISIBILITY virtual void AddInstructionCallbackRange(uint64_t Start, uint64_t Length) = 0;
+  FEX_DEFAULT_VISIBILITY virtual void RemoveInstructionCallbackRange(uint64_t Start, uint64_t Length) = 0;
+
+  /**
    * @brief Enable exiting the JIT when HLT is hit.
    *
    * This is to workaround a bug in Wine's longjump function which breaks our unittests.

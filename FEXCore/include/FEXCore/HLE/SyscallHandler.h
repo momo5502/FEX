@@ -17,6 +17,11 @@ struct CpuStateFrame;
 } // namespace FEXCore::Core
 
 namespace FEXCore::HLE {
+// sogen-specific: the first argument HandleSyscall receives, with CPUState.rip at the instruction, for the callback
+// AddInstructionCallbackRange adds before guest instructions. Guest syscalls pass 0 under the generic ABI. A nonzero result leaves the
+// block and continues at CPUState.rip, which the handler may have changed.
+inline constexpr uint64_t InstructionCallbackID = 0x736f67656e696373ULL;
+
 struct SyscallArguments {
   static constexpr std::size_t MAX_ARGS = 7;
   uint64_t Argument[MAX_ARGS];

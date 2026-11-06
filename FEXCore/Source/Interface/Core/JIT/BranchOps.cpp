@@ -340,7 +340,9 @@ DEF_OP(Syscall) {
 
   const auto OSABI = CTX->SyscallHandler->GetOSABI();
 
-  if (OSABI != FEXCore::HLE::SyscallOSABI::OS_GENERIC) {
+  // sogen-specific: generic syscalls ignore the result, but the instruction callback (see
+  // OpDispatchBuilder::InstructionCallback) branches on it.
+  if (OSABI != FEXCore::HLE::SyscallOSABI::OS_GENERIC || Node->GetUses() > 0) {
     // Move result to its destination register.
     // Only if `NORETURNEDRESULT` wasn't set, otherwise we might overwrite the CPUState refilled with `FillStaticRegs`
     mov(ARMEmitter::Size::i64Bit, GetReg(Node), ARMEmitter::Reg::r0);

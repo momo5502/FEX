@@ -244,6 +244,10 @@ public:
 
   void MarkMonoBackpatcherBlock(uint64_t BlockEntry) override;
 
+  // sogen-specific: see AddInstructionCallbackRange's doc comment (public Context.h).
+  std::mutex InstructionCallbackRangesLock;
+  fextl::vector<std::pair<uint64_t, uint64_t>> InstructionCallbackRanges;
+
   // Manual debugging tooling which is useful for developers.
   struct TrackingEmpty {
     // RIP stepping handling
@@ -335,6 +339,12 @@ public:
     // sogen/macOS-specific: see SetWow64GuestRebaseValue's doc comment (public Context.h).
     // Defaults to the compile-time IR::WOW64_GUEST_REBASE for embedders that never call the setter.
     uint64_t Wow64GuestRebaseValue {IR::WOW64_GUEST_REBASE};
+
+    // sogen-specific: see SetWow64GuestRebaseInGeneratedCode's doc comment (public Context.h).
+    bool Wow64GuestRebaseInGeneratedCode {true};
+
+    // sogen-specific: see SetTrapTimestampAndCpuid's doc comment (public Context.h).
+    bool TrapTimestampAndCpuid {false};
 
     FEX_CONFIG_OPT(Multiblock, MULTIBLOCK);
     FEX_CONFIG_OPT(SingleStepConfig, SINGLESTEP);
@@ -440,6 +450,33 @@ public:
 
   void SetWow64GuestRebaseValue(uint64_t RebaseValue) override {
     Config.Wow64GuestRebaseValue = RebaseValue;
+  }
+
+  void SetWow64GuestRebaseInGeneratedCode(bool InGeneratedCode) override {
+    Config.Wow64GuestRebaseInGeneratedCode = InGeneratedCode;
+  }
+
+  void SetTrapTimestampAndCpuid(bool Trap) override {
+    Config.TrapTimestampAndCpuid = Trap;
+  }
+
+  void AddInstructionCallbackRange(uint64_t Start, uint64_t Length) override {
+    std::scoped_lock lk {InstructionCallbackRangesLock};
+    InstructionCallbackRanges.emplace_back(Start, Length);
+  }
+
+  void RemoveInstructionCallbackRange(uint64_t Start, uint64_t Length) override {
+    std::scoped_lock lk {InstructionCallbackRangesLock};
+    const auto It = std::find(InstructionCallbackRanges.begin(), InstructionCallbackRanges.end(), std::pair {Start, Length});
+    if (It != InstructionCallbackRanges.end()) {
+      InstructionCallbackRanges.erase(It);
+    }
+  }
+
+  bool HasInstructionCallback(uint64_t Address) {
+    std::scoped_lock lk {InstructionCallbackRangesLock};
+    return std::any_of(InstructionCallbackRanges.begin(), InstructionCallbackRanges.end(),
+                       [Address](const auto& Range) { return Address >= Range.first && Address - Range.first < Range.second; });
   }
 
   void EnableExitOnHLT() override {

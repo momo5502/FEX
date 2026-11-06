@@ -641,6 +641,26 @@ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t Gue
           Thread->OpDispatcher->_GuestOpcode(InstAddress - GuestRIP);
         }
 
+        if (HasInstructionCallback(InstAddress)) {
+          auto Stop = Thread->OpDispatcher->InstructionCallback(InstAddress - GuestRIP);
+          auto StopCond = Thread->OpDispatcher->CondJump(Stop);
+
+          auto CurrentBlock = Thread->OpDispatcher->GetCurrentBlock();
+          auto StopBlock = Thread->OpDispatcher->CreateNewCodeBlockAtEnd();
+          Thread->OpDispatcher->SetTrueJumpTarget(StopCond, StopBlock);
+
+          // Like SyscallOp's redirect check, both successors restart the dispatcher's per-block state: values cached
+          // before the split must not be reused, and the stop path's exit must not leak state into the continuation.
+          Thread->OpDispatcher->SetCurrentCodeBlock(StopBlock);
+          Thread->OpDispatcher->StartNewBlock();
+          Thread->OpDispatcher->ExitFunction(Thread->OpDispatcher->_LoadContextGPR(GPRSize, offsetof(FEXCore::Core::CPUState, rip)));
+
+          auto NextOpBlock = Thread->OpDispatcher->CreateNewCodeBlockAfter(CurrentBlock);
+          Thread->OpDispatcher->SetFalseJumpTarget(StopCond, NextOpBlock);
+          Thread->OpDispatcher->SetCurrentCodeBlock(NextOpBlock);
+          Thread->OpDispatcher->StartNewBlock();
+        }
+
         if (Config.SMCChecks == FEXCore::Config::CONFIG_SMC_FULL || Block.ForceFullSMCDetection) {
           // See FEXCore::IR::WOW64_GUEST_REBASE's doc comment (Addressing.h) - Block.Entry is a
           // guest address; rebase it the same way instruction fetch does, so this reads the

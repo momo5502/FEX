@@ -111,9 +111,13 @@ FEX_DEFAULT_VISIBILITY extern VirtualTHPPtr VirtualTHPControl;
 #else
 using MMAP_Hook = void* (*)(void*, size_t, int, int, int, off_t);
 using MUNMAP_Hook = int (*)(void*, size_t);
+using DONTNEED_Hook = void (*)(void*, size_t);
 
 FEX_DEFAULT_VISIBILITY extern MMAP_Hook mmap;
 FEX_DEFAULT_VISIBILITY extern MUNMAP_Hook munmap;
+// Told before VirtualDontNeed replaces pages, so an embedder that maps this memory elsewhere (a hypervisor guest)
+// can drop its view of the old pages.
+FEX_DEFAULT_VISIBILITY extern DONTNEED_Hook dontneed;
 FEX_DEFAULT_VISIBILITY extern void VirtualName(const char* Name, void* Ptr, size_t Size);
 
 // All commit parameters are ignored here, they are unnecessary as Linux supports overcommit
@@ -182,6 +186,9 @@ inline void VirtualDontNeed(void* Ptr, size_t Size, bool Recommit = true) {
   // caller in place (__builtin_memset avoids pulling <string.h> into this widely-included header).
   const uintptr_t Addr = reinterpret_cast<uintptr_t>(Ptr);
   if ((Addr & (FEXCore::Utils::FEX_HOST_PAGE_SIZE - 1)) == 0 && (Size & (FEXCore::Utils::FEX_HOST_PAGE_SIZE - 1)) == 0) {
+    if (dontneed) {
+      dontneed(Ptr, Size);
+    }
     ::mmap(Ptr, Size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   } else {
     __builtin_memset(Ptr, 0, Size);

@@ -37,6 +37,7 @@ namespace FEXCore::Allocator {
 #ifndef _WIN32
 MMAP_Hook mmap {::mmap};
 MUNMAP_Hook munmap {::munmap};
+DONTNEED_Hook dontneed {};
 
 uint64_t HostVASize {};
 
