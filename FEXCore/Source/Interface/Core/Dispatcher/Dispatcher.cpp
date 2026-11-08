@@ -72,11 +72,6 @@ void Dispatcher::EmitDispatcher() {
   //    Ptr();
   // }
 
-  ARMEmitter::ForwardLabel l_CTX;
-  ARMEmitter::ForwardLabel l_Sleep;
-  ARMEmitter::ForwardLabel l_CompileBlock;
-  ARMEmitter::ForwardLabel l_CompileSingleStep;
-
   // Push all the register we need to save
   PushCalleeSavedRegisters();
 
@@ -338,11 +333,11 @@ void Dispatcher::EmitDispatcher() {
         mov(ARMEmitter::XReg::x2, RipReg);
       }
 
-      ldr(ARMEmitter::XReg::x0, &l_CTX);
+      ldr(ARMEmitter::XReg::x0, STATE_PTR(CpuStateFrame, Pointers.CTXObj));
       mov(ARMEmitter::XReg::x1, STATE);
       // x2 contains guest RIP
       mov(ARMEmitter::XReg::x3, 0);
-      ldr(ARMEmitter::XReg::x4, &l_CompileBlock);
+      ldr(ARMEmitter::XReg::x4, STATE_PTR(CpuStateFrame, Pointers.CompileBlockFunc));
 
       if (!CTX->Config.DisableVixlIndirectCalls) [[unlikely]] {
         GenerateIndirectRuntimeCall<uintptr_t, void*, void*, uint64_t, uint64_t>(ARMEmitter::Reg::r4);
@@ -380,10 +375,10 @@ void Dispatcher::EmitDispatcher() {
         mov(ARMEmitter::XReg::x2, RipReg);
       }
 
-      ldr(ARMEmitter::XReg::x0, &l_CTX);
+      ldr(ARMEmitter::XReg::x0, STATE_PTR(CpuStateFrame, Pointers.CTXObj));
       mov(ARMEmitter::XReg::x1, STATE);
       // x2 contains guest RIP
-      ldr(ARMEmitter::XReg::x4, &l_CompileSingleStep);
+      ldr(ARMEmitter::XReg::x4, STATE_PTR(CpuStateFrame, Pointers.CompileSingleStepFunc));
 
       if (!CTX->Config.DisableVixlIndirectCalls) [[unlikely]] {
         GenerateIndirectRuntimeCall<uintptr_t, void*, void*, uint64_t, uint64_t>(ARMEmitter::Reg::r4);
@@ -473,9 +468,9 @@ void Dispatcher::EmitDispatcher() {
     // We will have faulted and jumped to this location at this point
 
     // Call our sleep handler
-    ldr(ARMEmitter::XReg::x0, &l_CTX);
+    ldr(ARMEmitter::XReg::x0, STATE_PTR(CpuStateFrame, Pointers.CTXObj));
     mov(ARMEmitter::XReg::x1, STATE);
-    ldr(ARMEmitter::XReg::x2, &l_Sleep);
+    ldr(ARMEmitter::XReg::x2, STATE_PTR(CpuStateFrame, Pointers.SleepFunc));
     if (!CTX->Config.DisableVixlIndirectCalls) [[unlikely]] {
       GenerateIndirectRuntimeCall<void, void*, void*>(ARMEmitter::Reg::r2);
     } else {
@@ -614,18 +609,6 @@ void Dispatcher::EmitDispatcher() {
       ABIPointers[ABI] = GenerateABICall(ABI);
     }
   }
-
-  (void)Bind(&l_CTX);
-  dc64(reinterpret_cast<uintptr_t>(CTX));
-  (void)Bind(&l_Sleep);
-  dc64(reinterpret_cast<uint64_t>(SleepThread));
-  (void)Bind(&l_CompileBlock);
-  FEXCore::Utils::MemberFunctionToPointerCast PMFCompileBlock(&FEXCore::Context::ContextImpl::CompileBlock);
-  dc64(PMFCompileBlock.GetConvertedPointer());
-  (void)Bind(&l_CompileSingleStep);
-
-  FEXCore::Utils::MemberFunctionToPointerCast PMFCompileSingleStep(&FEXCore::Context::ContextImpl::CompileSingleStep);
-  dc64(PMFCompileSingleStep.GetConvertedPointer());
 
   Start = reinterpret_cast<uint64_t>(DispatchPtr);
   End = GetCursorAddress<uint64_t>();
@@ -2418,6 +2401,16 @@ void Dispatcher::InitThreadPointers(FEXCore::Core::InternalThreadState* Thread) 
   {
     auto& Ptrs = Thread->CurrentFrame->Pointers;
 
+    Ptrs.CTXObj = reinterpret_cast<uint64_t>(CTX);
+    Ptrs.SleepFunc = reinterpret_cast<uint64_t>(SleepThread);
+    {
+      FEXCore::Utils::MemberFunctionToPointerCast PMF(&FEXCore::Context::ContextImpl::CompileBlock);
+      Ptrs.CompileBlockFunc = PMF.GetConvertedPointer();
+    }
+    {
+      FEXCore::Utils::MemberFunctionToPointerCast PMF(&FEXCore::Context::ContextImpl::CompileSingleStep);
+      Ptrs.CompileSingleStepFunc = PMF.GetConvertedPointer();
+    }
     Ptrs.DispatcherLoopTop = AbsoluteLoopTopAddress;
     Ptrs.DispatcherLoopTopFillSRA = AbsoluteLoopTopAddressFillSRA;
     Ptrs.DispatcherLoopTopEnterEC = AbsoluteLoopTopAddressEnterEC;

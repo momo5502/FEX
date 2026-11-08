@@ -353,6 +353,12 @@ struct JITPointers {
   // Handles returning/calling ARM64EC code from the JIT, expects the target PC in TMP3
   uint64_t ExitFunctionEC {};
 
+  // Host calls made by the dispatcher itself
+  uint64_t CTXObj {};
+  uint64_t SleepFunc {};
+  uint64_t CompileBlockFunc {};
+  uint64_t CompileSingleStepFunc {};
+
   FallbackABIInfo FallbackHandlerPointers[FallbackHandlerIndex::OPINDEX_MAX];
   uint64_t NamedVectorConstantPointers[FEXCore::IR::NamedVectorConstant::NAMED_VECTOR_CONST_POOL_MAX];
   uint64_t IndexedNamedVectorConstantPointers[FEXCore::IR::IndexNamedVectorConstant::INDEXED_NAMED_VECTOR_MAX];
