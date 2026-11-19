@@ -631,7 +631,12 @@ private:
 
   void EmitSuspendInterruptCheck();
 
-  void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF);
+  // Stops the thread at GuestRIP when StopRequestFlag is set. State.rip is not kept current at every poll site, so GuestRIP is
+  // stored before leaving. Must run with SP at the value the block was entered with, as ThreadStopHandlerSpillSRA pops the
+  // dispatcher's callee saved registers from there.
+  void EmitPolledStopCheck(uint64_t GuestRIP);
+
+  void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, uint64_t BlockStartRIP);
 
 #define DEF_OP(x) void Op_##x(IR::IROp_Header const* IROp, IR::Ref Node)
 

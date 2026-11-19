@@ -346,6 +346,9 @@ public:
     // sogen-specific: see SetTrapTimestampAndCpuid's doc comment (public Context.h).
     bool TrapTimestampAndCpuid {false};
 
+    // sogen-specific: see SetPolledStopCheck's doc comment (public Context.h).
+    bool PolledStopCheck {false};
+
     FEX_CONFIG_OPT(Multiblock, MULTIBLOCK);
     FEX_CONFIG_OPT(SingleStepConfig, SINGLESTEP);
     FEX_CONFIG_OPT(GdbServer, GDBSERVER);
@@ -458,6 +461,10 @@ public:
 
   void SetTrapTimestampAndCpuid(bool Trap) override {
     Config.TrapTimestampAndCpuid = Trap;
+  }
+
+  void SetPolledStopCheck(bool Poll) override {
+    Config.PolledStopCheck = Poll;
   }
 
   void AddInstructionCallbackRange(uint64_t Start, uint64_t Length) override {

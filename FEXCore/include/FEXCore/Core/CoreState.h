@@ -429,6 +429,10 @@ struct CpuStateFrame {
   uint32_t SuspendDoorbell {};
 #endif
 
+  // Polled by the JIT when Context::SetPolledStopCheck is enabled. Any non-zero value makes the thread stop at the next
+  // poll, as an InterruptFaultPage fault would. The embedder clears it before resuming the thread.
+  uint32_t StopRequestFlag {};
+
   // DEBUG AID (kept intentionally, cheap): captures STATE's own value the moment ExitFunctionLinkerAddress's trampoline is
   // entered (before SpillStaticRegs/any other work), to check whether it's already wrong at that
   // point vs. becoming wrong later. Read from the embedder's crash handler.
