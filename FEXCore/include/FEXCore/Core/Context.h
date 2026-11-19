@@ -206,10 +206,13 @@ public:
   FEX_DEFAULT_VISIBILITY virtual void SetTrapTimestampAndCpuid(bool Trap) = 0;
 
   /**
-   * @brief sogen-specific: makes generated code poll CpuStateFrame::StopRequestFlag at every block entry and stop the thread
-   * when it is set, instead of relying on a fault from InterruptFaultPage. For embedders where a hardware fault cannot reach
-   * the process, such as a host whose attached debugger claims every exception. Costs a load and a branch per block entry
-   * and nothing when disabled. Set it once before the first block is compiled; blocks compiled earlier are not changed.
+   * @brief sogen-specific: makes generated code poll CpuStateFrame::StopRequestFlag at every block entry and before every
+   * backward jump, conditional or not, whose target is a guest instruction boundary, and stop the thread when it is set,
+   * instead of relying on a fault from InterruptFaultPage. For embedders where a hardware fault cannot reach the process,
+   * such as a host whose attached debugger claims every exception. Costs a load and a branch per poll and nothing when
+   * disabled. Execution resumes at the RIP of the block or branch target, after the branching instruction has completed.
+   * A loop the dispatcher expands from one instruction (REP) is not polled. Set it once before the first block is
+   * compiled; blocks compiled earlier are not changed.
    */
   FEX_DEFAULT_VISIBILITY virtual void SetPolledStopCheck(bool Poll) = 0;
 

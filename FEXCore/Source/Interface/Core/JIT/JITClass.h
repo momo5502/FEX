@@ -90,6 +90,9 @@ private:
   uint32_t SSANodeMultiplier {24};
 
   ARMEmitter::BiDirectionalLabel* PendingTargetLabel {};
+  // Guest RIP of PendingTargetLabel's block, or nullopt when it is a block the dispatcher synthesized while expanding an
+  // instruction (a REP loop, an instruction callback or SMC check split), which has no guest RIP to resume at.
+  std::optional<uint64_t> PendingTargetLabelGuestRIP;
   ARMEmitter::BiDirectionalLabel* PendingCallReturnTargetLabel {};
   FEXCore::Context::ContextImpl* CTX {};
   const FEXCore::IR::IRListView* IR {};
@@ -101,6 +104,22 @@ private:
   ARMEmitter::BiDirectionalLabel* JumpTarget(IR::OrderedNodeWrapper Node) {
     auto Block = IR->GetOp<IR::IROp_CodeBlock>(Node);
     return &JumpTargets[Block->ID];
+  }
+
+  // Blocks the dispatcher synthesizes while expanding an instruction (REP loops, instruction callback and SMC check
+  // splits) keep the default GuestEntryOffset of 0 without EntryPoint. A decoded block at offset 0 is the entry block of
+  // the unit and always has EntryPoint set.
+  static bool IsSynthesizedBlock(const IR::IROp_CodeBlock* Block) {
+    return !Block->EntryPoint && Block->GuestEntryOffset == 0;
+  }
+
+  // The guest RIP a jump to the block resumes at, or nullopt for a synthesized block.
+  std::optional<uint64_t> JumpTargetGuestRIP(IR::OrderedNodeWrapper Node) {
+    const auto Block = IR->GetOp<IR::IROp_CodeBlock>(Node);
+    if (IsSynthesizedBlock(Block)) {
+      return std::nullopt;
+    }
+    return Entry + Block->GuestEntryOffset;
   }
 
   fextl::map<IR::NodeID, ARMEmitter::BiDirectionalLabel> CallReturnTargets;
@@ -635,6 +654,14 @@ private:
   // stored before leaving. Must run with SP at the value the block was entered with, as ThreadStopHandlerSpillSRA pops the
   // dispatcher's callee saved registers from there.
   void EmitPolledStopCheck(uint64_t GuestRIP);
+
+  // Branches to Target unless StopRequestFlag is set, in which case the thread stops at GuestRIP. The stop sequence follows the
+  // branch so that the common path falls through the poll. Runs after the spill slots have been reserved.
+  void EmitPolledStopBranch(uint64_t GuestRIP, ARMEmitter::BiDirectionalLabel* Target);
+
+  void EmitPolledStop(uint64_t GuestRIP);
+
+  void EmitPendingBranch();
 
   void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, uint64_t BlockStartRIP);
 

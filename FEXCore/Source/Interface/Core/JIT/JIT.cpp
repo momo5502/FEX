@@ -867,13 +867,37 @@ void Arm64JITCore::EmitPolledStopCheck(uint64_t GuestRIP) {
   ARMEmitter::ForwardLabel l_NoStop;
   ldr(TMP1.W(), STATE_PTR(CpuStateFrame, StopRequestFlag));
   (void)cbz(ARMEmitter::Size::i32Bit, TMP1, &l_NoStop);
+  EmitPolledStop(GuestRIP);
+  (void)Bind(&l_NoStop);
+}
 
+void Arm64JITCore::EmitPolledStopBranch(uint64_t GuestRIP, ARMEmitter::BiDirectionalLabel* Target) {
+  ARMEmitter::ForwardLabel l_Stop;
+  ldr(TMP1.W(), STATE_PTR(CpuStateFrame, StopRequestFlag));
+  (void)cbnz(ARMEmitter::Size::i32Bit, TMP1, &l_Stop);
+  b_OrRestart(Target);
+  (void)Bind(&l_Stop);
+  ResetStack();
+  EmitPolledStop(GuestRIP);
+}
+
+void Arm64JITCore::EmitPolledStop(uint64_t GuestRIP) {
   InsertGuestRIPMove(TMP1, GuestRIP);
   str(TMP1, STATE_PTR(CpuStateFrame, State.rip));
 
   ldr(TMP1, STATE_PTR(CpuStateFrame, Pointers.ThreadStopHandlerSpillSRA));
   br(TMP1);
-  (void)Bind(&l_NoStop);
+}
+
+void Arm64JITCore::EmitPendingBranch() {
+  if (PendingTargetLabel->Backward.Location) {
+    EmitSuspendInterruptCheck();
+    if (CTX->Config.PolledStopCheck && PendingTargetLabelGuestRIP) {
+      EmitPolledStopBranch(*PendingTargetLabelGuestRIP, PendingTargetLabel);
+      return;
+    }
+  }
+  b_OrRestart(PendingTargetLabel);
 }
 
 void Arm64JITCore::EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, uint64_t BlockStartRIP) {
@@ -1022,10 +1046,7 @@ CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size
 
       // if there's a pending branch, and it is not fall-through
       if (PendingTargetLabel && PendingTargetLabel != Target) {
-        if (PendingTargetLabel->Backward.Location) {
-          EmitSuspendInterruptCheck();
-        }
-        b_OrRestart(PendingTargetLabel);
+        EmitPendingBranch();
         PendingTargetLabel = nullptr;
       }
 
@@ -1078,10 +1099,7 @@ CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size
 
   // Make sure last branch is generated. It certainly can't be eliminated here.
   if (PendingTargetLabel) {
-    if (PendingTargetLabel->Backward.Location) {
-      EmitSuspendInterruptCheck();
-    }
-    b_OrRestart(PendingTargetLabel);
+    EmitPendingBranch();
   }
   PendingTargetLabel = nullptr;
 

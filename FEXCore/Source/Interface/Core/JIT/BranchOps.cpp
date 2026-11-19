@@ -237,6 +237,7 @@ DEF_OP(Jump) {
   const auto Op = IROp->C<IR::IROp_Jump>();
 
   PendingTargetLabel = JumpTarget(Op->TargetBlock);
+  PendingTargetLabelGuestRIP = JumpTargetGuestRIP(Op->TargetBlock);
 }
 
 DEF_OP(CondJump) {
@@ -248,9 +249,13 @@ DEF_OP(CondJump) {
     EmitSuspendInterruptCheck();
   }
 
-  if (Op->FromNZCV) {
-    b_OrRestart(MapCC(Op->Cond), TrueTargetLabel);
-  } else {
+  auto EmitConditionalBranch = [&](bool Invert, auto* Label) {
+    if (Op->FromNZCV) {
+      const auto CC = MapCC(Op->Cond);
+      b_OrRestart(Invert ? InvertCondition(CC) : CC, Label);
+      return;
+    }
+
     uint64_t Const;
     const bool isConst = IsInlineConstant(Op->Cmp2, &Const);
 
@@ -262,22 +267,51 @@ DEF_OP(CondJump) {
 
     if (Op->Cond == IR::CondClass::EQ) {
       LOGMAN_THROW_A_FMT(Const == 0, "CondJump: Expected 0 source");
-      cbz_OrRestart(Size, Reg, TrueTargetLabel);
+      if (Invert) {
+        cbnz_OrRestart(Size, Reg, Label);
+      } else {
+        cbz_OrRestart(Size, Reg, Label);
+      }
     } else if (Op->Cond == IR::CondClass::NEQ) {
       LOGMAN_THROW_A_FMT(Const == 0, "CondJump: Expected 0 source");
-      cbnz_OrRestart(Size, Reg, TrueTargetLabel);
+      if (Invert) {
+        cbz_OrRestart(Size, Reg, Label);
+      } else {
+        cbnz_OrRestart(Size, Reg, Label);
+      }
     } else if (Op->Cond == IR::CondClass::TSTZ) {
       LOGMAN_THROW_A_FMT(Const < 64, "CondJump: Expected valid bit source");
-      tbz_OrRestart(Reg, Const, TrueTargetLabel);
+      if (Invert) {
+        tbnz_OrRestart(Reg, Const, Label);
+      } else {
+        tbz_OrRestart(Reg, Const, Label);
+      }
     } else if (Op->Cond == IR::CondClass::TSTNZ) {
       LOGMAN_THROW_A_FMT(Const < 64, "CondJump: Expected valid bit source");
-      tbnz_OrRestart(Reg, Const, TrueTargetLabel);
+      if (Invert) {
+        tbz_OrRestart(Reg, Const, Label);
+      } else {
+        tbnz_OrRestart(Reg, Const, Label);
+      }
     } else {
       LOGMAN_THROW_A_FMT(false, "CondJump expected simple condition");
     }
+  };
+
+  // The taken edge of a backward branch is how a guest loop closes, and it is encoded directly so the deferred-branch poll
+  // never sees it. Poll on that edge instead, resuming at the target once this guest instruction has completed.
+  const auto PollRIP = CTX->Config.PolledStopCheck && TrueTargetLabel->Backward.Location ? JumpTargetGuestRIP(Op->TrueBlock) : std::nullopt;
+  if (PollRIP) {
+    ARMEmitter::ForwardLabel l_NotTaken;
+    EmitConditionalBranch(true, &l_NotTaken);
+    EmitPolledStopBranch(*PollRIP, TrueTargetLabel);
+    (void)Bind(&l_NotTaken);
+  } else {
+    EmitConditionalBranch(false, TrueTargetLabel);
   }
 
   PendingTargetLabel = JumpTarget(Op->FalseBlock);
+  PendingTargetLabelGuestRIP = JumpTargetGuestRIP(Op->FalseBlock);
 }
 
 DEF_OP(Syscall) {
