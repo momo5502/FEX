@@ -52,6 +52,14 @@ FEX_DEFAULT_VISIBILITY void SetupHooks(size_t PageSize, HookPtrs Ptrs);
 FEX_DEFAULT_VISIBILITY void ClearHooks();
 
 #ifdef _WIN32
+inline void* JITToExecutable(void* Ptr) {
+  return Ptr;
+}
+
+inline void* JITToWritable(void* Ptr) {
+  return Ptr;
+}
+
 inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Commit = true) {
   // Allocate top-down to avoid polluting the lower VA space, as even on 64-bit some programs (i.e. LuaJIT) require allocations below 4GB.
   DWORD Flags = (Commit ? MEM_COMMIT : 0) | MEM_RESERVE | MEM_TOP_DOWN;
@@ -118,7 +126,26 @@ FEX_DEFAULT_VISIBILITY extern MUNMAP_Hook munmap;
 // Told before VirtualDontNeed replaces pages, so an embedder that maps this memory elsewhere (a hypervisor guest)
 // can drop its view of the old pages.
 FEX_DEFAULT_VISIBILITY extern DONTNEED_Hook dontneed;
+
+// For embedders whose executable memory cannot be mapped writable and executable at once, so the mmap hook returns a
+// writable alias for MAP_JIT requests and the same pages are executed through a separate executable mapping.
+// Each hook converts an address inside such a mapping to the matching address in the other view and returns any
+// other address unchanged. They are called from signal handlers and must be async-signal-safe. FEXCore also reads
+// emitted code through the executable view, so that view has to stay readable.
+using JITView_Hook = void* (*)(void*);
+FEX_DEFAULT_VISIBILITY extern JITView_Hook ExecutableView;
+FEX_DEFAULT_VISIBILITY extern JITView_Hook WritableView;
 FEX_DEFAULT_VISIBILITY extern void VirtualName(const char* Name, void* Ptr, size_t Size);
+
+// Code is emitted through the address VirtualAlloc returned and runs at its executable view; JITToExecutable and
+// JITToWritable translate between the two and are the identity when no embedder installed the hooks.
+inline void* JITToExecutable(void* Ptr) {
+  return ExecutableView ? ExecutableView(Ptr) : Ptr;
+}
+
+inline void* JITToWritable(void* Ptr) {
+  return WritableView ? WritableView(Ptr) : Ptr;
+}
 
 // All commit parameters are ignored here, they are unnecessary as Linux supports overcommit
 
