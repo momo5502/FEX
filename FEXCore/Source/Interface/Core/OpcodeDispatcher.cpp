@@ -755,6 +755,7 @@ void OpDispatchBuilder::CondJUMPOp(OpcodeArgs) {
     // Taking branch block
     if (TrueBlock != JumpTargets.end()) {
       SetTrueJumpTarget(CondJump_, TrueBlock->second.BlockEntry);
+      CondJump_.first->InterruptCheck = CTX->Config.NeedsPendingInterruptFaultCheck && Target <= Op->PC;
     } else {
       // Make sure to start a new block after ending this one
       auto JumpTarget = CreateNewCodeBlockAtEnd();
@@ -806,6 +807,7 @@ void OpDispatchBuilder::CondJUMPRCXOp(OpcodeArgs) {
     // Taking branch block
     if (TrueBlock != JumpTargets.end()) {
       SetTrueJumpTarget(CondJump_, TrueBlock->second.BlockEntry);
+      CondJump_.first->InterruptCheck = CTX->Config.NeedsPendingInterruptFaultCheck && Target <= Op->PC;
     } else {
       // Make sure to start a new block after ending this one
       auto JumpTarget = CreateNewCodeBlockAtEnd();
