@@ -371,6 +371,10 @@ struct JITPointers {
   uint64_t GuestSignal_SIGILL {};
   uint64_t GuestSignal_SIGTRAP {};
   uint64_t GuestSignal_SIGSEGV {};
+  // Optional `uint64_t (*)(CpuStateFrame*)` that the GuestSignal_* stubs call instead of raising hlt, brk or a faulting load.
+  // The static registers are already spilled; it returns the address to resume at, and must clear
+  // SynchronousFaultData.FaultToTopAndGeneratedException as the signal handlers do. Set by the embedder per thread.
+  uint64_t GuestSignalDispatchFunc {};
   uint64_t SignalReturnHandler {};
   uint64_t SignalReturnHandlerRT {};
   uint64_t L2Pointer {};
