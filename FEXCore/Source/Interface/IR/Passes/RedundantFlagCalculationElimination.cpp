@@ -736,7 +736,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
       auto Op = ExitOp->CW<IR::IROp_CondJump>();
       uint32_t FlagsOut = CFG.Get(Op->TrueBlock)->Flags | CFG.Get(Op->FalseBlock)->Flags;
 
-      if ((FlagsOut & FLAG_NZCV) == 0 && Op->FromNZCV) {
+      if ((FlagsOut & FLAG_NZCV) == 0 && Op->FromNZCV && !Op->InterruptCheck) {
         FoldBranch(IREmit, CurrentIR, Op, ExitNode);
       }
     }
