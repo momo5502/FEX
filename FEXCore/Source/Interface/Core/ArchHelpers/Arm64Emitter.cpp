@@ -73,21 +73,35 @@ namespace x64 {
     ARMEmitter::Reg::r8, ARMEmitter::Reg::r16, ARMEmitter::Reg::r17,
   };
 
+#ifdef __APPLE__
+  // Darwin reserves x18 and does not preserve it across kernel entry.
+  constexpr std::array<ARMEmitter::Register, 6> RA = {
+    // All these callee saved
+    ARMEmitter::Reg::r20, ARMEmitter::Reg::r21, ARMEmitter::Reg::r22, ARMEmitter::Reg::r23, ARMEmitter::Reg::r24, ARMEmitter::Reg::r30,
+  };
+#else
   constexpr std::array<ARMEmitter::Register, 7> RA = {
     // All these callee saved
     ARMEmitter::Reg::r20, ARMEmitter::Reg::r21, ARMEmitter::Reg::r22, ARMEmitter::Reg::r23,
     ARMEmitter::Reg::r24, ARMEmitter::Reg::r30, ARMEmitter::Reg::r18,
   };
+#endif
 
   constexpr unsigned RAPairs = 4;
 
   // Dynamic GPRs
+#ifdef __APPLE__
+  constexpr std::array<ARMEmitter::Register, 1> PreserveAll_Dynamic = {
+    ARMEmitter::Reg::r30,
+  };
+#else
   constexpr std::array<ARMEmitter::Register, 2> PreserveAll_Dynamic = {
     ARMEmitter::Reg::r18,
     ARMEmitter::Reg::r30,
   };
+#endif
 
-  constexpr std::array<ARMEmitter::Register, 2> NotPreserved_Dynamic = PreserveAll_Dynamic;
+  constexpr auto NotPreserved_Dynamic = PreserveAll_Dynamic;
 
   // All are caller saved
   constexpr std::array<ARMEmitter::VRegister, 16> SRAFPR = {
