@@ -23,7 +23,6 @@
 #include <fcntl.h>
 #ifndef _WIN32
 #include <sys/mman.h>
-#include <sys/user.h>
 #endif
 
 namespace fextl::pmr {

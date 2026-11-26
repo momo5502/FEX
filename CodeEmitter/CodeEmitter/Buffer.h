@@ -5,6 +5,10 @@
 #include <cstring>
 #include <type_traits>
 
+#ifdef __APPLE__
+#include <libkern/OSCacheControl.h>
+#endif
+
 namespace ARMEmitter {
 class Buffer {
 public:
@@ -63,7 +67,11 @@ public:
   }
 
   static void ClearICache(void* Begin, std::size_t Length) {
+#ifdef __APPLE__
+    sys_icache_invalidate(Begin, Length);
+#else
     __builtin___clear_cache(static_cast<char*>(Begin), static_cast<char*>(Begin) + Length);
+#endif
   }
 
   size_t GetCursorOffset() const {
