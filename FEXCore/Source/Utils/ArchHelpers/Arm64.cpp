@@ -2,6 +2,7 @@
 
 #include "Interface/Core/CPUBackend.h"
 #include "Interface/Context/Context.h"
+#include <FEXCore/Utils/AllocatorHooks.h>
 #include <FEXCore/Utils/SpinWaitLock.h>
 
 #include <FEXCore/Debug/InternalThreadState.h>
@@ -121,6 +122,10 @@ static constexpr uint32_t GetRnReg(uint32_t Instr) {
 
 static constexpr uint32_t GetRmReg(uint32_t Instr) {
   return (Instr >> RM_OFFSET) & REGISTER_MASK;
+}
+
+static std::atomic_ref<uint32_t> WritableInstruction(uint32_t* Inst) {
+  return std::atomic_ref<uint32_t>(*static_cast<uint32_t*>(FEXCore::Allocator::JITToWritable(Inst)));
 }
 
 static void ClearICache(void* Begin, std::size_t Length) {
@@ -2111,7 +2116,7 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
   // Lock code mutex during any SIGBUS handling that potentially changes code.
   // Due to code buffer sharing between threads, code must be carefully backpatched from last to first.
   // Multiple threads can be attempting to handle the SIGBUS or even be executing the code being backpatched.
-  FEXCore::Utils::SpinWaitLock::UniqueSpinMutex lk(&InlineTail->SpinLockFutex);
+  FEXCore::Utils::SpinWaitLock::UniqueSpinMutex lk(static_cast<uint32_t*>(FEXCore::Allocator::JITToWritable(&InlineTail->SpinLockFutex)));
 
   if ((Instr & LDAXR_MASK) == LDAR_INST ||  // LDAR*
       (Instr & LDAXR_MASK) == LDAPR_INST) { // LDAPR*
@@ -2121,9 +2126,9 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
     LDR |= DataReg;
     if (HandleType != UnalignedHandlerType::NonAtomic) {
       // Ordering matters with cross-thread visibility!
-      std::atomic_ref<uint32_t>(PC[1]).store(DMB_LD, std::memory_order_release); // Back-patch the half-barrier.
+      WritableInstruction(&PC[1]).store(DMB_LD, std::memory_order_release); // Back-patch the half-barrier.
     }
-    std::atomic_ref<uint32_t>(PC[0]).store(LDR, std::memory_order_release);
+    WritableInstruction(&PC[0]).store(LDR, std::memory_order_release);
     ClearICache(&PC[0], 8);
     // With the instruction modified, now execute again.
     return 0;
@@ -2133,9 +2138,9 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
     STR |= AddrReg << 5;
     STR |= DataReg;
     if (HandleType != UnalignedHandlerType::NonAtomic) {
-      std::atomic_ref<uint32_t>(PC[-1]).store(DMB, std::memory_order_release); // Back-patch the half-barrier.
+      WritableInstruction(&PC[-1]).store(DMB, std::memory_order_release); // Back-patch the half-barrier.
     }
-    std::atomic_ref<uint32_t>(PC[0]).store(STR, std::memory_order_release);
+    WritableInstruction(&PC[0]).store(STR, std::memory_order_release);
     ClearICache(&PC[-1], 8);
     // Back up one instruction and have another go
     return -4;
@@ -2148,9 +2153,9 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
     LDUR |= Instr & (0b1'1111'1111 << 12);
     if (HandleType != UnalignedHandlerType::NonAtomic) {
       // Ordering matters with cross-thread visibility!
-      std::atomic_ref<uint32_t>(PC[1]).store(DMB_LD, std::memory_order_release); // Back-patch the half-barrier.
+      WritableInstruction(&PC[1]).store(DMB_LD, std::memory_order_release); // Back-patch the half-barrier.
     }
-    std::atomic_ref<uint32_t>(PC[0]).store(LDUR, std::memory_order_release);
+    WritableInstruction(&PC[0]).store(LDUR, std::memory_order_release);
     ClearICache(&PC[0], 8);
     // With the instruction modified, now execute again.
     return 0;
@@ -2161,9 +2166,9 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
     STUR |= DataReg;
     STUR |= Instr & (0b1'1111'1111 << 12);
     if (HandleType != UnalignedHandlerType::NonAtomic) {
-      std::atomic_ref<uint32_t>(PC[-1]).store(DMB, std::memory_order_release); // Back-patch the half-barrier.
+      WritableInstruction(&PC[-1]).store(DMB, std::memory_order_release); // Back-patch the half-barrier.
     }
-    std::atomic_ref<uint32_t>(PC[0]).store(STUR, std::memory_order_release);
+    WritableInstruction(&PC[0]).store(STUR, std::memory_order_release);
 
     ClearICache(&PC[-1], 8);
     // Back up one instruction and have another go

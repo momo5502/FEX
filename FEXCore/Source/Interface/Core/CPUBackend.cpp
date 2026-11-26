@@ -444,8 +444,9 @@ namespace CPU {
     auto CheckCodeBuffer = [](CodeBuffer& Buffer, uintptr_t Address) {
       // The last page of the code buffer is protected, so we need to exclude it from the valid range
       // when checking if the address is in the code buffer.
-      uintptr_t LastPageAddr = AlignDown(reinterpret_cast<uintptr_t>(Buffer.Ptr) + Buffer.AllocatedSize - 1, FEXCore::Utils::FEX_PAGE_SIZE);
-      return (Address >= reinterpret_cast<uintptr_t>(Buffer.Ptr) && Address < LastPageAddr);
+      const auto BufferBase = reinterpret_cast<uintptr_t>(FEXCore::Allocator::JITToExecutable(Buffer.Ptr));
+      uintptr_t LastPageAddr = AlignDown(BufferBase + Buffer.AllocatedSize - 1, FEXCore::Utils::FEX_PAGE_SIZE);
+      return (Address >= BufferBase && Address < LastPageAddr);
     };
 
     if (CheckCodeBuffer(*CurrentCodeBuffer, Address)) {

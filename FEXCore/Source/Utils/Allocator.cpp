@@ -37,6 +37,8 @@ namespace FEXCore::Allocator {
 MMAP_Hook mmap {::mmap};
 MUNMAP_Hook munmap {::munmap};
 DONTNEED_Hook dontneed {};
+JITView_Hook ExecutableView {};
+JITView_Hook WritableView {};
 
 uint64_t HostVASize {};
 

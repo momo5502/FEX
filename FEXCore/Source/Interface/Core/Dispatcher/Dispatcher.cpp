@@ -42,6 +42,44 @@ Dispatcher::Dispatcher(FEXCore::Context::ContextImpl* ctx)
   , CTX {ctx} {
   EmitDispatcher();
 
+  // The dispatcher is emitted through the writable view but only ever executed at its executable view.
+  const auto ToExecutable = [](uint64_t Address) {
+    return reinterpret_cast<uint64_t>(FEXCore::Allocator::JITToExecutable(reinterpret_cast<void*>(Address)));
+  };
+  DispatchPtr = reinterpret_cast<AsmDispatch>(ToExecutable(reinterpret_cast<uint64_t>(DispatchPtr)));
+  CallbackPtr = reinterpret_cast<JITCallback>(ToExecutable(reinterpret_cast<uint64_t>(CallbackPtr)));
+  ThreadStopHandlerAddress = ToExecutable(ThreadStopHandlerAddress);
+  ThreadStopHandlerAddressSpillSRA = ToExecutable(ThreadStopHandlerAddressSpillSRA);
+  AbsoluteLoopTopAddress = ToExecutable(AbsoluteLoopTopAddress);
+  AbsoluteLoopTopAddressFillSRA = ToExecutable(AbsoluteLoopTopAddressFillSRA);
+  AbsoluteLoopTopAddressEnterEC = ToExecutable(AbsoluteLoopTopAddressEnterEC);
+  AbsoluteLoopTopAddressEnterECFillSRA = ToExecutable(AbsoluteLoopTopAddressEnterECFillSRA);
+  ThreadPauseHandlerAddress = ToExecutable(ThreadPauseHandlerAddress);
+  ThreadPauseHandlerAddressSpillSRA = ToExecutable(ThreadPauseHandlerAddressSpillSRA);
+  ExitFunctionLinkerAddress = ToExecutable(ExitFunctionLinkerAddress);
+  SignalHandlerReturnAddress = ToExecutable(SignalHandlerReturnAddress);
+  SignalHandlerReturnAddressRT = ToExecutable(SignalHandlerReturnAddressRT);
+  GuestSignal_SIGILL = ToExecutable(GuestSignal_SIGILL);
+  GuestSignal_SIGTRAP = ToExecutable(GuestSignal_SIGTRAP);
+  GuestSignal_SIGSEGV = ToExecutable(GuestSignal_SIGSEGV);
+  PauseReturnInstruction = ToExecutable(PauseReturnInstruction);
+  Start = ToExecutable(Start);
+  End = ToExecutable(End);
+  LUDIVHandlerAddress = ToExecutable(LUDIVHandlerAddress);
+  LDIVHandlerAddress = ToExecutable(LDIVHandlerAddress);
+  F64SinHandlerAddress = ToExecutable(F64SinHandlerAddress);
+  F64CosHandlerAddress = ToExecutable(F64CosHandlerAddress);
+  F64TanHandlerAddress = ToExecutable(F64TanHandlerAddress);
+  F64F2XM1HandlerAddress = ToExecutable(F64F2XM1HandlerAddress);
+  F64ScaleHandlerAddress = ToExecutable(F64ScaleHandlerAddress);
+  F64AtanHandlerAddress = ToExecutable(F64AtanHandlerAddress);
+  F64FYL2XHandlerAddress = ToExecutable(F64FYL2XHandlerAddress);
+  F64FPREMHandlerAddress = ToExecutable(F64FPREMHandlerAddress);
+  F64FPREM1HandlerAddress = ToExecutable(F64FPREM1HandlerAddress);
+  for (auto& ABIPointer : ABIPointers) {
+    ABIPointer = ToExecutable(ABIPointer);
+  }
+
   FEXCore::Allocator::VirtualName("FEXMem_Misc", reinterpret_cast<void*>(GetBufferBase()), MAX_DISPATCHER_CODE_SIZE);
 }
 
@@ -655,7 +693,7 @@ void Dispatcher::EmitDispatcher() {
 
   Start = reinterpret_cast<uint64_t>(DispatchPtr);
   End = GetCursorAddress<uint64_t>();
-  ClearICache(reinterpret_cast<void*>(DispatchPtr), End - reinterpret_cast<uint64_t>(DispatchPtr));
+  ClearICache(FEXCore::Allocator::JITToExecutable(reinterpret_cast<void*>(DispatchPtr)), End - reinterpret_cast<uint64_t>(DispatchPtr));
 
   if (CTX->Config.BlockJITNaming()) {
     fextl::string Name = fextl::fmt::format("Dispatch_{}", FHU::Syscalls::gettid());
