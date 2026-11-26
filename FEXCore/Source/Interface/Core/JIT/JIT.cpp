@@ -863,11 +863,29 @@ void Arm64JITCore::EmitSuspendInterruptCheck() {
 #endif
 }
 
-void Arm64JITCore::EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF) {
+void Arm64JITCore::EmitPolledStopCheck(uint64_t GuestRIP) {
+  ARMEmitter::ForwardLabel l_NoStop;
+  ldr(TMP1.W(), STATE_PTR(CpuStateFrame, StopRequestFlag));
+  (void)cbz(ARMEmitter::Size::i32Bit, TMP1, &l_NoStop);
+
+  InsertGuestRIPMove(TMP1, GuestRIP);
+  str(TMP1, STATE_PTR(CpuStateFrame, State.rip));
+
+  ldr(TMP1, STATE_PTR(CpuStateFrame, Pointers.ThreadStopHandlerSpillSRA));
+  br(TMP1);
+  (void)Bind(&l_NoStop);
+}
+
+void Arm64JITCore::EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, uint64_t BlockStartRIP) {
   // Get the address of the JITCodeHeader and store in to the core state.
   // Two instruction cost, each 1 cycle.
   adr_OrRestart(TMP1, &HeaderLabel);
   str(TMP1, STATE, offsetof(FEXCore::Core::CPUState, InlineJITBlockHeader));
+
+  // Before the TF check and the spill slots: a stop here must not have changed any guest or stack state.
+  if (CTX->Config.PolledStopCheck) {
+    EmitPolledStopCheck(BlockStartRIP);
+  }
 
   if (CheckTF) {
     EmitTFCheck();
@@ -1028,7 +1046,7 @@ CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size
         CodeData.EntryPoints.emplace(BlockStartRIP, GetCursorAddress<uint8_t*>());
         DebugData->GuestOpcodes.push_back({BlockIROp->GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
 
-        EmitEntryPoint(JITCodeHeaderLabel, CheckTF);
+        EmitEntryPoint(JITCodeHeaderLabel, CheckTF, BlockStartRIP);
       }
 
       if (PendingCallReturnTargetLabel) {

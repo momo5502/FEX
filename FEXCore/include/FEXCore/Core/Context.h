@@ -206,6 +206,14 @@ public:
   FEX_DEFAULT_VISIBILITY virtual void SetTrapTimestampAndCpuid(bool Trap) = 0;
 
   /**
+   * @brief sogen-specific: makes generated code poll CpuStateFrame::StopRequestFlag at every block entry and stop the thread
+   * when it is set, instead of relying on a fault from InterruptFaultPage. For embedders where a hardware fault cannot reach
+   * the process, such as a host whose attached debugger claims every exception. Costs a load and a branch per block entry
+   * and nothing when disabled. Set it once before the first block is compiled; blocks compiled earlier are not changed.
+   */
+  FEX_DEFAULT_VISIBILITY virtual void SetPolledStopCheck(bool Poll) = 0;
+
+  /**
    * @brief sogen-specific: calls the syscall handler with HLE::InstructionCallbackID before every guest instruction in
    * [Start, Start + Length), so the embedder can hook execution, count instructions and stop exactly between two.
    * Ranges are counted, so each add needs a matching remove. Only code compiled afterwards is affected; the embedder
