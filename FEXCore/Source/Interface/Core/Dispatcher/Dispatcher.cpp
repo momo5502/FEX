@@ -414,6 +414,29 @@ void Dispatcher::EmitDispatcher() {
     hlt(0);
   }
 
+  auto EmitGuestSignalHostCall = [&]() {
+    ARMEmitter::ForwardLabel l_NoHostCall;
+    ldr(ARMEmitter::XReg::x1, STATE_PTR(CpuStateFrame, Pointers.GuestSignalDispatchFunc));
+    (void)cbz(ARMEmitter::Size::i64Bit, ARMEmitter::Reg::r1, &l_NoHostCall);
+
+    EmitSignalGuardedRegion([&]() {
+      mov(ARMEmitter::XReg::x0, STATE);
+      ldr(ARMEmitter::XReg::x1, STATE_PTR(CpuStateFrame, Pointers.GuestSignalDispatchFunc));
+      if (!CTX->Config.DisableVixlIndirectCalls) [[unlikely]] {
+        GenerateIndirectRuntimeCall<uint64_t, void*>(ARMEmitter::Reg::r1);
+      } else {
+        blr(ARMEmitter::Reg::r1);
+      }
+
+      if (!TMP_ABIARGS) {
+        mov(TMP1, ARMEmitter::XReg::x0);
+      }
+    });
+
+    br(TMP1);
+    (void)Bind(&l_NoHostCall);
+  };
+
   {
     SignalHandlerReturnAddressRT = GetCursorAddress<uint64_t>();
 
@@ -429,6 +452,7 @@ void Dispatcher::EmitDispatcher() {
 
     SpillStaticRegs(TMP1);
 
+    EmitGuestSignalHostCall();
     hlt(0);
   }
 
@@ -439,6 +463,7 @@ void Dispatcher::EmitDispatcher() {
 
     SpillStaticRegs(TMP1);
 
+    EmitGuestSignalHostCall();
     brk(0);
   }
 
@@ -459,6 +484,7 @@ void Dispatcher::EmitDispatcher() {
       PopCalleeSavedRegisters();
       ret();
     } else {
+      EmitGuestSignalHostCall();
       LoadConstant(ARMEmitter::Size::i64Bit, ARMEmitter::Reg::r1, 0);
       ldr(ARMEmitter::XReg::x1, ARMEmitter::Reg::r1);
     }
